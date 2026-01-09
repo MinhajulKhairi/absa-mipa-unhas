@@ -1,0 +1,120 @@
+/* style.css */
+
+/* === 1. GLOBAL STYLES (Sebelumnya di app.py) === */
+
+/* Mengatur padding container utama */
+.main .block-container { 
+    padding-top: 2rem;
+    padding-bottom: 2rem;
+}
+
+/* Mengubah background body aplikasi */
+body {
+    background-color: #F0F2F6;
+}
+
+/* Styling sidebar (jika diperlukan, tapi sering di-override) */
+.css-1aumcll { 
+    background-color: #FFFFFF; /* Sidebar putih */
+}
+
+/* === 2. PAGE-SPECIFIC STYLES (Sebelumnya di 1_Prediksi_Ulasan.py) === */
+
+/* Style untuk Label Text Area */
+.stTextArea label {
+    font-size: 1.25rem;
+    font-weight: bold;
+    color: #004a99; /* Biru Tua Unhas */
+}
+
+/* Kontainer Kartu Hasil */
+.result-card {
+    border: 1px solid #e0e0e0;
+    border-radius: 10px;
+    padding: 16px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    background-color: #ffffff; /* Kartu putih */
+    height: 180px; /* Tinggi kartu agar seragam */
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    transition: all 0.3s ease;
+}
+.result-card:hover {
+    box-shadow: 0 6px 16px rgba(0,0,0,0.1);
+    transform: translateY(-2px);
+}
+
+/* Header Kartu (Nama Aspek) */
+.card-header {
+    font-size: 1.1rem;
+    font-weight: bold;
+    color: #333;
+    border-bottom: 2px solid #F0F2F6;
+    padding-bottom: 8px;
+    margin-bottom: 12px;
+}
+
+/* Body Kartu (Sentimen) */
+.card-sentiment {
+    font-size: 1.75rem;
+    font-weight: 600;
+    text-align: center;
+    margin: 10px 0;
+}
+
+/* Footer Kartu (Probabilitas) */
+.card-probability {
+    font-size: 0.9rem;
+    color: #555;
+    text-align: center;
+    font-weight: 500;
+}
+
+
+
+/* Target utama sidebar content area */
+.st-emotion-cache-16ya5m0 { 
+    /* st-emotion-cache-16ya5m0 adalah salah satu class container sidebar utama */
+    display: flex; /* Mengaktifkan Flexbox untuk mengontrol urutan anak-anak */
+    flex-direction: column; /* Mengatur susunan anak-anak secara vertikal */
+}
+
+
+/* 1. Target Kontainer Utama Sidebar */
+.st-emotion-cache-1kyxreq {
+    display: flex; 
+    flex-direction: column; 
+    justify-content: space-between;
+}
+
+/* 2. Target Elemen Footer Sidebar (Logo & Garis Horizontal) */
+/* Karena ini adalah elemen terakhir yang kita tambahkan, ia akan berada di bagian bawah */
+.st-emotion-cache-1kyxreq > div:last-child {
+    /* Tambahkan margin atas untuk memberi jarak dari tautan navigasi di atasnya */
+    margin-top: auto; 
+    padding-top: 20px; /* Padding di atas garis/logo */
+    padding-bottom: 10px; /* Padding di bawah logo (jika ada) */
+    text-align: center; /* Opsional: Jika Anda ingin rata tengah */
+}
+
+/* 3. Target elemen image (agar img itu sendiri berada di tengah, bukan hanya teksnya) */
+.st-emotion-cache-1kyxreq > div:last-child img {
+    /* Blok ini memastikan gambar itu sendiri rata tengah jika text-align di atas tidak cukup */
+    display: block; 
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* Opsional: Hapus garis horizontal (markdown "---") yang dibuat Streamlit 
+   karena kita akan membuatnya sendiri */
+.st-emotion-cache-1kyxreq > div:last-child > hr {
+    display: none;
+}
+
+/* style.css (Tambahan untuk tata letak 4 kolom/kartu) */
+.column-card-wrapper {
+    flex: 1; /* Ambil bagian yang sama dari ruang Flexbox */
+    margin: 0 10px; /* Jarak antar kartu */
+    min-width: 200px; /* Ukuran minimum agar tidak terlalu kecil */
+}
