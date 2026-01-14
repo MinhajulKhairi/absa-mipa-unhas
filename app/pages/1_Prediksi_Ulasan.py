@@ -16,12 +16,12 @@ st.set_page_config(page_title="Prediksi & Validasi - ABSA", page_icon="🤖", la
 # ==============================================================================
 st.markdown("""
 <style>
-    /* 1. KUNCI SIDEBAR (Wajib Dicopy ke setiap halaman) */
+    /* Sidebar Lock */
     section[data-testid="stSidebar"] { width: 300px !important; }
     div[data-testid="stSidebar"] + div { display: none; }
     [data-testid="stSidebar"] img { display: block; margin: 0 auto; }
 
-    /* Input Area Styling */
+    /* Input Area */
     .stTextArea textarea { 
         font-size: 1.1rem; 
         background-color: #ffffff !important;
@@ -43,7 +43,9 @@ st.markdown("""
         transition: transform 0.2s;
     }
     .result-card:hover { transform: translateX(5px); border-color: #cbd5e1; }
-    .pos { border-left-color: #10b981; } .neg { border-left-color: #ef4444; } .neu { border-left-color: #94a3b8; }
+    .pos { border-left-color: #10b981; }
+    .neg { border-left-color: #ef4444; }
+    .neu { border-left-color: #94a3b8; }
     
     /* Badge */
     .sent-badge { display: inline-block; padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.85rem; font-weight: 700; text-transform: uppercase; }
@@ -66,7 +68,7 @@ def determine_status(min_conf, avg_conf, patterns):
     return 'VERIFIED', 'green', '✅'
 
 # ==============================================================================
-# 3. SIDEBAR (KONSISTEN)
+# 3. SIDEBAR
 # ==============================================================================
 with st.sidebar:
     try:
@@ -79,7 +81,7 @@ with st.sidebar:
     **Navigasi:**
     
     🤖 **Prediksi Ulasan**
-    Simulasi analisis real-time dengan Human-in-the-Loop.
+    Analisis real-time ulasan.
     
     📊 **Evaluasi Model**
     Monitoring performa dan log data.
@@ -98,10 +100,12 @@ st.caption("Masukkan ulasan untuk analisis sentimen real-time.")
 col_input, col_info = st.columns([2, 1])
 
 with col_input:
-    text_input = st.text_area("Input Ulasan:", height=150, 
-                             placeholder="Contoh: Dosennya enak ngajar tapi AC di kelas panas banget...",
-                             key="input_ulasan") # Tambahkan Key agar state terjaga
-    
+    text_input = st.text_area(
+        "Input Ulasan:", 
+        height=150, 
+        placeholder="Contoh: Dosennya enak ngajar tapi AC di kelas panas banget...",
+        key="input_ulasan"
+    )
     analyze = st.button("🔍 Analisis Sentimen", type="primary", use_container_width=True)
 
 with col_info:
@@ -112,13 +116,13 @@ with col_info:
     - 🔴 **High Risk:** Terdeteksi sarkasme/negasi kompleks.
     """)
 
-# Session State untuk menyimpan hasil prediksi agar tidak hilang saat tombol verifikasi ditekan
+# Session State
 if 'prediction_result' not in st.session_state:
     st.session_state['prediction_result'] = None
 
 if analyze:
     if not text_input or len(text_input) < 10:
-        st.warning("⚠️ Teks terlalu pendek. Masukkan minimal 10 karakter agar prediksi valid.")
+        st.warning("⚠️ Teks terlalu pendek. Masukkan minimal 10 karakter.")
         st.stop()
 
     tokenizer, model, device = load_model_and_tokenizer()
@@ -137,7 +141,7 @@ if analyze:
         min_conf = min(all_probs)
         status_label, color_class, icon = determine_status(min_conf, avg_conf, patterns)
         
-        # Simpan ke Log Awal
+        # Simpan ke Log
         append_to_log(text_input, results, status_label)
         
         # Simpan ke Session State
@@ -152,7 +156,9 @@ if analyze:
             'icon': icon
         }
 
-# TAMPILKAN HASIL DARI SESSION STATE
+# ==============================================================================
+# 5. TAMPILKAN HASIL
+# ==============================================================================
 if st.session_state['prediction_result']:
     data = st.session_state['prediction_result']
     
@@ -215,7 +221,7 @@ if st.session_state['prediction_result']:
         st.plotly_chart(fig, use_container_width=True)
 
     # ==========================================================================
-    # 6. HUMAN-IN-THE-LOOP (DENGAN FEEDBACK YANG BENAR)
+    # 6. VERIFIKASI MANUAL
     # ==========================================================================
     if data['status_label'] in ['REVIEW NEEDED', 'HIGH RISK']:
         st.markdown("---")
@@ -249,25 +255,22 @@ if st.session_state['prediction_result']:
 
             if submit_correction:
                 with st.spinner("Mengupdate database log..."):
-                    # PANGGIL FUNGSI UPDATE DAN TANGKAP HASILNYA
                     success, message = update_log_entry(data['text'], corrected_results)
                     time.sleep(1.0)
                 
                 if success:
                     st.success(f"✅ Berhasil! Status berubah menjadi VERIFIED (MANUAL).")
-                    # Tampilkan perubahan
                     changes = []
                     for res in data['results']:
                         asp = res['Aspek']
                         if res['Sentimen'] != corrected_results[asp]:
-                            changes.append(f"{asp}: {res['Sentimen']} ➝ {corrected_results[asp]}")
+                            changes.append(f"{asp}: {res['Sentimen']} → {corrected_results[asp]}")
                     
                     if changes:
                         st.info(f"Perubahan: {', '.join(changes)}")
                     
-                    # Reset session state agar form bersih kembali
                     time.sleep(2)
                     st.session_state['prediction_result'] = None
-                    st.rerun() # Refresh halaman
+                    st.rerun()
                 else:
                     st.error(f"Gagal menyimpan: {message}")
