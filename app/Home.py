@@ -4,9 +4,9 @@ import numpy as np
 import torch
 import torch.nn as nn
 import re
-from transformers import AutoModel, AutoTokenizer
+from transformers import BertForSequenceClassification, AutoTokenizer # KEMBALI KE CLASS ASLI
 from huggingface_hub import hf_hub_download
-from safetensors.torch import load_file  # Untuk load safetensors
+from safetensors.torch import load_file
 from datetime import datetime
 import os
 
@@ -14,8 +14,8 @@ import os
 # 1. KONFIGURASI GLOBAL & KONSTANTA
 # ==============================================================================
 
-# ⚠️ GANTI DENGAN REPO HUGGING FACE KAMU
 HF_MODEL_REPO = "minhajulkhairi/absa-mipa-unhas"
+BERT_MODEL_NAME = "indobenchmark/indobert-base-p2" 
 
 # Konfigurasi Model
 NUM_TOTAL_LABELS = 12
@@ -28,7 +28,7 @@ ASPECT_COLS = ['Layanan_Akademik', 'Layanan_Penunjang', 'Fasilitas_Inti', 'Saran
 KAMUS_ALAY_FILE_PATH = "data/kamus_alay.csv"
 LOG_DATA_PATH = "dynamic_prediction_log.csv"
 
-# Metrik Model (dari hasil penelitian Persona-Based Full+BCE)
+# Metrik Model
 MODEL_METRICS = {
     'synthetic_test': {
         'macro_f1': 0.8868,
@@ -42,7 +42,7 @@ MODEL_METRICS = {
 }
 
 # ==============================================================================
-# 2. PAGE CONFIG & CSS
+# 2. PAGE CONFIG & CSS 
 # ==============================================================================
 
 st.set_page_config(
@@ -97,35 +97,12 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==============================================================================
-# 3. MODEL CLASS (Harus sama dengan saat training)
-# ==============================================================================
-
-class IndoBERTForABSA(nn.Module):
-    """Custom ABSA Model - arsitektur harus IDENTIK dengan saat training"""
-    def __init__(self, num_labels=12):
-        super().__init__()
-        self.bert = AutoModel.from_pretrained("indobenchmark/indobert-base-p2")
-        self.dropout = nn.Dropout(0.1)
-        self.classifier = nn.Linear(self.bert.config.hidden_size, num_labels)
-        
-    def forward(self, input_ids, attention_mask, token_type_ids=None):
-        outputs = self.bert(
-            input_ids=input_ids, 
-            attention_mask=attention_mask,
-            token_type_ids=token_type_ids
-        )
-        pooled = outputs.last_hidden_state[:, 0, :]  # [CLS] token
-        pooled = self.dropout(pooled)
-        logits = self.classifier(pooled)
-        return logits
-
-# ==============================================================================
-# 4. UTILITY FUNCTIONS
+# 3. UTILITY FUNCTIONS 
 # ==============================================================================
 
 @st.cache_resource
 def load_normalization_map():
-    """Load kamus normalisasi kata alay/slang"""
+    """Load kamus normalisasi kata alay/slang - DIPERBAIKI AGAR SAMA DENGAN KODE LAMA"""
     DEFAULT_MAP = {
         'yg': 'yang', 'bgt': 'banget', 'gak': 'tidak', 'ga': 'tidak', 'tp': 'tapi',
         'krn': 'karena', 'dgn': 'dengan', 'sy': 'saya', 'tdk': 'tidak', 'utk': 'untuk',
@@ -138,7 +115,9 @@ def load_normalization_map():
     try:
         if os.path.exists(KAMUS_ALAY_FILE_PATH):
             df = pd.read_csv(KAMUS_ALAY_FILE_PATH)
-            custom_map = dict(zip(df['slang'], df['formal']))
+            # FIX: Pakai str.lower() seperti kode lama agar matching akurat
+            custom_map = dict(zip(df['slang'].astype(str).str.lower(), 
+                                df['formal'].astype(str).str.lower()))
             DEFAULT_MAP.update(custom_map)
         return DEFAULT_MAP
     except:
@@ -146,25 +125,40 @@ def load_normalization_map():
 
 NORMALIZATION_MAP = load_normalization_map()
 
+
 def normalize_text_preserve_punctuation(text):
-    """Normalisasi teks dengan mempertahankan tanda baca penting"""
     if pd.isna(text): 
         return ""
     text = str(text).lower()
-    text = re.sub(r"http\S+|www\S+", "", text)
+    text = re.sub(r"http\S+|www\S+|https\S+", "", text) # Samakan regex URL 
+    
+    # Hanya normalisasi kata, biarkan tanda baca
     words = text.split()
     normalized = [NORMALIZATION_MAP.get(w, w) for w in words]
-    return " ".join(normalized)
+    text = " ".join(normalized)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
 
+# Urutan: Hapus Punctuation DULU -> Baru Normalisasi Map
 def clean_for_model(text):
-    """Bersihkan teks untuk input model"""
-    text = normalize_text_preserve_punctuation(text)
-    text = re.sub(r"[^a-z0-9 ]", " ", text)
+    """
+    Clean text FOR MODEL INPUT ONLY
+    Logic disamakan persis dengan kode lama: clean_and_normalize_text
+    """
+    if pd.isna(text): 
+        return ""
+    text = str(text).lower()
+    text = re.sub(r"http\S+|www\S+|https\S+", "", text)
+    text = re.sub(r"[^a-z0-9 ]", " ", text)  # Hapus tanda baca DULUAN
+    
+    words = text.split()
+    normalized = [NORMALIZATION_MAP.get(w, w) for w in words] # Baru normalisasi
+    text = " ".join(normalized)
     text = re.sub(r"\s+", " ", text).strip()
     return text
 
 def detect_error_patterns(raw_text):
-    """Deteksi pola linguistik yang berpotensi menyebabkan error prediksi"""
+    """Deteksi pola linguistik (Fitur Dashboard Baru)"""
     text = normalize_text_preserve_punctuation(raw_text)
     patterns = {
         'mixed_sentiment': r'\b(tapi|namun|padahal|walaupun|meskipun|sayangnya)\b',
@@ -179,7 +173,6 @@ def detect_error_patterns(raw_text):
     return detected
 
 def get_pattern_message(name):
-    """Dapatkan pesan deskriptif untuk pola error"""
     msgs = {
         'mixed_sentiment': 'Indikasi kalimat pertentangan (Mixed Sentiment)',
         'sarcasm': 'Indikasi gaya bahasa sarkasme/informal',
@@ -189,7 +182,6 @@ def get_pattern_message(name):
     return msgs.get(name, name)
 
 def load_dynamic_log():
-    """Load log prediksi dari CSV"""
     try:
         if os.path.exists(LOG_DATA_PATH):
             return pd.read_csv(LOG_DATA_PATH)
@@ -198,7 +190,6 @@ def load_dynamic_log():
         return pd.DataFrame(columns=['timestamp', 'text', 'aspect', 'prediction', 'probability', 'status'])
 
 def append_to_log(text, results, status):
-    """Menambahkan log prediksi baru"""
     try:
         df = load_dynamic_log()
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -218,7 +209,6 @@ def append_to_log(text, results, status):
         st.warning(f"⚠️ Log tidak tersimpan: {e}")
 
 def update_log_entry(text, corrected_results):
-    """Update log dengan hasil koreksi manual"""
     try:
         if not os.path.exists(LOG_DATA_PATH):
             return False, "File log tidak ditemukan"
@@ -241,41 +231,45 @@ def update_log_entry(text, corrected_results):
         return False, str(e)
 
 # ==============================================================================
-# 5. MODEL LOADING (DARI HUGGING FACE HUB - SAFETENSORS)
+# 5. MODEL LOADING 
 # ==============================================================================
 
 @st.cache_resource
 def load_model_and_tokenizer():
     """
-    Load model dan tokenizer dari Hugging Face Hub.
-    Mendukung format safetensors dan pytorch_model.bin
+    Load model dan tokenizer.
+    FIX: Menggunakan BertForSequenceClassification (bukan class custom) agar struktur layer sama persis dengan training.
     """
     try:
-        # Load tokenizer
-        tokenizer = AutoTokenizer.from_pretrained("indobenchmark/indobert-base-p2")
+        # 1. Load Tokenizer
+        tokenizer = AutoTokenizer.from_pretrained(BERT_MODEL_NAME)
         
-        # Inisialisasi model dengan arsitektur yang sama
-        model = IndoBERTForABSA(num_labels=NUM_TOTAL_LABELS)
+        # 2. Inisialisasi Model Standard 
+        model = BertForSequenceClassification.from_pretrained(
+            BERT_MODEL_NAME,
+            num_labels=NUM_TOTAL_LABELS,
+            problem_type="multi_label_classification"
+        )
         
-        # Coba download safetensors dulu, jika tidak ada coba .bin
+        # 3. Download dan Load Weights dari HuggingFace
+        # Coba download safetensors dulu
         try:
             model_path = hf_hub_download(
                 repo_id=HF_MODEL_REPO,
                 filename="model.safetensors"
             )
-            # Load safetensors
             state_dict = load_file(model_path)
             model.load_state_dict(state_dict)
-            print("✅ Loaded model.safetensors")
+            print("✅ Loaded model.safetensors into BertForSequenceClassification")
         except:
             # Fallback ke pytorch_model.bin
             model_path = hf_hub_download(
                 repo_id=HF_MODEL_REPO,
                 filename="pytorch_model.bin"
             )
-            state_dict = torch.load(model_path, map_location='cpu', weights_only=False)
+            state_dict = torch.load(model_path, map_location='cpu')
             model.load_state_dict(state_dict)
-            print("✅ Loaded pytorch_model.bin")
+            print("✅ Loaded pytorch_model.bin into BertForSequenceClassification")
         
         # Setup device
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -289,41 +283,55 @@ def load_model_and_tokenizer():
         return None, None, None
 
 def predict_absa(text, tokenizer, model, device):
-    """Prediksi sentiment per aspek"""
+    """Prediksi sentiment per aspek - Disamakan logikanya dengan kode lama"""
+    # 1. Gunakan cleaning khusus model (hapus punct dulu)
     clean_text = clean_for_model(text)
     
-    inputs = tokenizer(
+    if not clean_text:
+        return []
+
+    # 2. Encoding 
+    inputs = tokenizer.encode_plus(
         clean_text, 
         return_tensors="pt", 
         padding='max_length', 
         truncation=True, 
         max_length=MAX_SEQ_LEN
     )
-    inputs = {k: v.to(device) for k, v in inputs.items()}
+    
+    input_ids = inputs['input_ids'].to(device)
+    attention_mask = inputs['attention_mask'].to(device)
     
     with torch.no_grad():
-        # Model custom menggunakan forward langsung
-        logits = model(
-            input_ids=inputs['input_ids'],
-            attention_mask=inputs['attention_mask']
-        )
-        probs = torch.sigmoid(logits).cpu().numpy()[0]
+        # 3. Forward Pass Standard
+        outputs = model(input_ids=input_ids, attention_mask=attention_mask)
+        logits = outputs.logits # Ambil logits dari output standard BERT
+        probabilities = torch.sigmoid(logits)
+        
+    probs = probabilities.cpu().numpy()[0]
     
-    probs_reshaped = probs.reshape(len(ASPECT_COLS), NUM_SENTIMENT_CLASSES)
-    
+    # 4. Slicing Results 
     results = []
-    for i, aspect in enumerate(ASPECT_COLS):
-        p = probs_reshaped[i]
-        label_idx = np.argmax(p)
+    for aspect_idx, aspect_name in enumerate(ASPECT_COLS):
+        start_idx = aspect_idx * NUM_SENTIMENT_CLASSES
+        end_idx = start_idx + NUM_SENTIMENT_CLASSES
+        
+        aspect_probs = probs[start_idx:end_idx]
+        
+        predicted_sentiment_idx = np.argmax(aspect_probs)
+        predicted_sentiment = SENTIMENT_LABELS[predicted_sentiment_idx]
+        confidence = float(aspect_probs[predicted_sentiment_idx])
+        
         results.append({
-            'Aspek': aspect,
-            'Sentimen': SENTIMENT_LABELS[label_idx],
-            'Probabilitas': float(p[label_idx])
+            'Aspek': aspect_name, # Biarkan nama asli untuk key
+            'Sentimen': predicted_sentiment,
+            'Probabilitas': confidence
         })
+        
     return results
 
 # ==============================================================================
-# 6. SIDEBAR
+# 6. SIDEBAR (TIDAK DIUBAH)
 # ==============================================================================
 
 with st.sidebar:
@@ -360,7 +368,7 @@ with st.sidebar:
     st.caption("© 2025 | Minhajul Yusri Khairi")
 
 # ==============================================================================
-# 7. MAIN CONTENT
+# 7. MAIN CONTENT 
 # ==============================================================================
 
 # Hero Section
@@ -439,4 +447,3 @@ with c3:
         <p>Validasi manual untuk prediksi dengan confidence &lt;75%, menjamin akurasi laporan akhir.</p>
     </div>
     """, unsafe_allow_html=True)
-

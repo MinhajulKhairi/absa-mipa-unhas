@@ -5,14 +5,14 @@ import plotly.graph_objects as go
 from datetime import datetime
 from Home import (
     load_model_and_tokenizer, predict_absa, append_to_log, update_log_entry,
-    detect_error_patterns, get_pattern_message,
+    detect_error_patterns, get_pattern_message, 
     ASPECT_COLS
 )
 
 st.set_page_config(page_title="Prediksi & Validasi - ABSA", page_icon="🤖", layout="wide")
 
 # ==============================================================================
-# 1. CSS KHUSUS HALAMAN PREDIKSI
+# 1. CSS KHUSUS HALAMAN PREDIKSI 
 # ==============================================================================
 st.markdown("""
 <style>
@@ -58,17 +58,22 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==============================================================================
-# 2. LOGIKA VALIDASI
+# 2. LOGIKA VALIDASI (UI BARU)
 # ==============================================================================
 def determine_status(min_conf, avg_conf, patterns):
-    if 'sarcasm' in patterns or 'negation' in patterns:
+    # Jika ada Sarkasme atau Negasi -> HIGH RISK
+    if any(p in ['sarcasm', 'negation', 'mixed_sentiment'] for p in patterns):
         return 'HIGH RISK', 'red', '🔴'
+    
+    # Jika Confidence rendah -> REVIEW NEEDED
     if min_conf < 0.75:
         return 'REVIEW NEEDED', 'yellow', '⚠️'
+        
+    # Jika aman -> VERIFIED
     return 'VERIFIED', 'green', '✅'
 
 # ==============================================================================
-# 3. SIDEBAR
+# 3. SIDEBAR (UI BARU)
 # ==============================================================================
 with st.sidebar:
     try:
@@ -125,6 +130,7 @@ if analyze:
         st.warning("⚠️ Teks terlalu pendek. Masukkan minimal 10 karakter.")
         st.stop()
 
+    # Load Model 
     tokenizer, model, device = load_model_and_tokenizer()
     
     if not model:
@@ -132,19 +138,26 @@ if analyze:
         st.stop()
 
     with st.spinner("Sedang memproses..."):
-        time.sleep(0.5)
+        time.sleep(0.5) # UX delay
+        
+        # 1. Deteksi Pola (Panggil fungsi dari Home.py)
         patterns = detect_error_patterns(text_input)
+        
+        # 2. Prediksi Model (Panggil fungsi dari Home.py yang sudah fix cleaning-nya)
         results = predict_absa(text_input, tokenizer, model, device)
         
+        # 3. Hitung Statistik Confidence
         all_probs = [r['Probabilitas'] for r in results]
         avg_conf = sum(all_probs) / 4
         min_conf = min(all_probs)
+        
+        # 4. Tentukan Status
         status_label, color_class, icon = determine_status(min_conf, avg_conf, patterns)
         
-        # Simpan ke Log
+        # 5. Simpan ke Log
         append_to_log(text_input, results, status_label)
         
-        # Simpan ke Session State
+        # 6. Simpan ke Session State untuk ditampilkan
         st.session_state['prediction_result'] = {
             'text': text_input,
             'results': results,
@@ -157,7 +170,7 @@ if analyze:
         }
 
 # ==============================================================================
-# 5. TAMPILKAN HASIL
+# 5. TAMPILKAN HASIL 
 # ==============================================================================
 if st.session_state['prediction_result']:
     data = st.session_state['prediction_result']
@@ -170,7 +183,9 @@ if st.session_state['prediction_result']:
     """, unsafe_allow_html=True)
 
     if data['patterns']:
-        st.warning(f"⚠️ **Peringatan Linguistik:** Ditemukan pola {' & '.join([get_pattern_message(p) for p in data['patterns']])}")
+        # Mengambil pesan error dari Home.py
+        p_msgs = [get_pattern_message(p) for p in data['patterns']]
+        st.warning(f"⚠️ **Peringatan Linguistik:** Ditemukan pola {' & '.join(p_msgs)}")
 
     c1, c2 = st.columns([1, 1])
     
@@ -180,6 +195,8 @@ if st.session_state['prediction_result']:
             sent = res['Sentimen']
             conf_val = res['Probabilitas']
             border_cls = 'pos' if sent == 'Positif' else 'neg' if sent == 'Negatif' else 'neu'
+            
+            # Logic warna confidence persis kode baru
             conf_color = "#166534" if conf_val >= 0.75 else "#b45309" if conf_val >= 0.6 else "#991b1b"
             
             st.markdown(f"""
@@ -221,7 +238,7 @@ if st.session_state['prediction_result']:
         st.plotly_chart(fig, use_container_width=True)
 
     # ==========================================================================
-    # 6. VERIFIKASI MANUAL
+    # 6. VERIFIKASI MANUAL 
     # ==========================================================================
     if data['status_label'] in ['REVIEW NEEDED', 'HIGH RISK']:
         st.markdown("---")
